@@ -7,6 +7,8 @@ namespace AzureMailer
     {
         public CloudTable<Template> Templates { get; set; }
         public CloudTable<Email> Outboxes { get; set; }
+
+        [Setting(Period = Period.Month)]
         public CloudTable DeadEmails { get; set; }
     }
 }

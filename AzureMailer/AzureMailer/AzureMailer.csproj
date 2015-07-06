@@ -32,8 +32,9 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="AzureStorageExtensions">
-      <HintPath>..\packages\AzureStorageExtensions.1.0.2\lib\net45\AzureStorageExtensions.dll</HintPath>
+    <Reference Include="AzureStorageExtensions, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\AzureStorageExtensions.1.0.3\lib\net45\AzureStorageExtensions.dll</HintPath>
+      <Private>True</Private>
     </Reference>
     <Reference Include="Base64Url, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <HintPath>..\packages\Base64Url.1.0.2\lib\net45\Base64Url.dll</HintPath>

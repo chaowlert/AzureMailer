@@ -24,33 +24,47 @@ namespace AzureMailer
             return SafeSendEmail(outbox);
         }
 
-        public virtual void SendEmails()
+        public virtual void SendEmails(int timeoutMinutes = 3)
         {
             var context = new MailerContext();
-            var emails = context.Outboxes.Query().Execute();
             var start = DateTime.UtcNow;
-            var leaseTime = TimeSpan.FromMinutes(5);
-            foreach (var email in emails)
-            {
-                if ((DateTime.UtcNow - start) > leaseTime)
-                    break;
-                if (email.LeaseExpire.GetValueOrDefault() > start ||
-                    context.Outboxes.Lease(email, leaseTime))
-                    continue;
+            var leaseTime = TimeSpan.FromMinutes(timeoutMinutes);
 
-                email.DequeueCount++;
-                var result = SafeSendEmail(email);
-                if (result == SmtpStatusCode.Ok)
-                    context.Outboxes.Delete(email);
-                else if (email.DequeueCount >= 3 || !ShouldRetry(result))
+            var query = context.Outboxes.Query();
+            TableContinuationToken token = null;
+            do
+            {
+                var segment = query.ExecuteSegmented(token);
+                token = segment.ContinuationToken;
+                if (segment.Results.Count <= 0)
+                    continue;
+                foreach (var email in segment.Results)
                 {
-                    var op = TableOperation.Insert(email);
-                    context.DeadEmails.Execute(op);
-                    context.Outboxes.Delete(email);
+                    if ((DateTime.UtcNow - start) > leaseTime)
+                    {
+                        token = null;
+                        break;
+                    }
+                    PrepareSendEmail(context, email);
                 }
-                else
-                    context.Outboxes.Replace(email);
             }
+            while (token != null);
+        }
+
+        static void PrepareSendEmail(MailerContext context, Email email)
+        {
+            email.DequeueCount++;
+            var result = SafeSendEmail(email);
+            if (result == SmtpStatusCode.Ok)
+                context.Outboxes.Delete(email);
+            else if (email.DequeueCount >= 3 || !ShouldRetry(result))
+            {
+                var op = TableOperation.Insert(email);
+                context.DeadEmails.Execute(op);
+                context.Outboxes.Delete(email);
+            }
+            else
+                context.Outboxes.Replace(email);
         }
 
         public static bool ShouldRetry(SmtpStatusCode statusCode)

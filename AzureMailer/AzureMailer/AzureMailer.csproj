@@ -101,6 +101,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="InvalidatingTemplateManager.cs" />
     <Compile Include="Mailer.cs" />
     <Compile Include="MailerContext.cs" />
     <Compile Include="Email.cs" />

@@ -8,8 +8,8 @@ namespace AzureMailer
         public string To { get; set; }
         public string Subject { get; set; }
         public string Body { get; set; }
-
-        public DateTime? LeaseExpire { get; set; }
+        
         public int DequeueCount { get; set; }
+        public DateTime? LeaseExpire { get; set; }
     }
 }

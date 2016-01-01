@@ -11,7 +11,7 @@ namespace AzureMailer
     {
         private static readonly ILog logger = LogManager.GetLogger(typeof (Mailer));
 
-        public virtual void AddToMailQueue(string templateName, string to, object model, string language = null)
+        public void AddToMailQueue(string templateName, string to, object model, string language = null)
         {
             var outbox = MemoryCache.Default.RunTemplate(templateName, to, model, language);
             var context = new MailerContext();
@@ -24,7 +24,14 @@ namespace AzureMailer
             return SafeSendEmail(outbox);
         }
 
-        public virtual void SendEmails(int timeoutMinutes = 3)
+        public void SendEmailWithFallback(string templateName, string to, object model, string language = null)
+        {
+            var result = this.SendEmail(templateName, to, model, language);
+            if (result != SmtpStatusCode.Ok)
+                this.AddToMailQueue(templateName, to, model, language);
+        }
+
+        public void SendEmails(int timeoutMinutes = 3)
         {
             var context = new MailerContext();
             var start = DateTime.UtcNow;
@@ -45,13 +52,16 @@ namespace AzureMailer
                         token = null;
                         break;
                     }
-                    PrepareSendEmail(context, email);
+                    if (email.LeaseExpire.GetValueOrDefault() > start || !context.Outboxes.Lease(email, leaseTime))
+                        continue;
+
+                    SendEmailFromStore(context, email);
                 }
             }
             while (token != null);
         }
 
-        static void PrepareSendEmail(MailerContext context, Email email)
+        static void SendEmailFromStore(MailerContext context, Email email)
         {
             email.DequeueCount++;
             var result = SafeSendEmail(email);

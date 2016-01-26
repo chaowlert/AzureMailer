@@ -58,7 +58,7 @@
       <Private>True</Private>
     </Reference>
     <Reference Include="FrameworkExtensions, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\..\..\..\TripsBox\backend\packages\FrameworkExtensions.1.0.0\lib\net45\FrameworkExtensions.dll</HintPath>
+      <HintPath>..\packages\FrameworkExtensions.1.0.0\lib\net45\FrameworkExtensions.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="Microsoft.Data.Edm, Version=5.6.2.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">

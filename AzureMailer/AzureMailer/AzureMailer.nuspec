@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<package >
+  <metadata>
+    <id>AzureMailer</id>
+    <version>0.1.0</version>
+    <title>Azure Mailer</title>
+    <authors>Chaowlert</authors>
+    <owners>Chaowlert</owners>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>This library use RazorEngine to compile email templates and store those templates in Azure. It also include service to queue emails and batch sending emails.</description>
+    <copyright>Copyright 2016</copyright>
+    <tags>azure mailer</tags>
+  </metadata>
+</package>

@@ -1,7 +1,12 @@
 ﻿using System;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Net.Mail;
 using System.Runtime.Caching;
 using System.Text;
+using System.Threading.Tasks;
 using Common.Logging;
 using Microsoft.WindowsAzure.Storage.Table;
 
@@ -11,27 +16,27 @@ namespace AzureMailer
     {
         private static readonly ILog logger = LogManager.GetLogger(typeof (Mailer));
 
-        public void AddToMailQueue(string templateName, string to, object model, string language = null)
+        public void AddToMailQueue(string templateName, string to, object model, string language = null, params string[] attachments)
         {
-            var outbox = MemoryCache.Default.RunTemplate(templateName, to, model, language);
+            var outbox = MemoryCache.Default.RunTemplate(templateName, to, model, language, attachments);
             var context = new MailerContext();
             context.Outboxes.Insert(outbox);
         }
 
-        public SmtpStatusCode SendEmail(string templateName, string to, object model, string language = null)
+        public Task<SmtpStatusCode> SendEmail(string templateName, string to, object model, string language = null, params string[] attachments)
         {
-            var outbox = MemoryCache.Default.RunTemplate(templateName, to, model, language);
+            var outbox = MemoryCache.Default.RunTemplate(templateName, to, model, language, attachments);
             return SafeSendEmail(outbox);
         }
 
-        public void SendEmailWithFallback(string templateName, string to, object model, string language = null)
+        public async Task SendEmailWithFallback(string templateName, string to, object model, string language = null, params string[] attachments)
         {
-            var result = this.SendEmail(templateName, to, model, language);
+            var result = await this.SendEmail(templateName, to, model, language, attachments);
             if (result != SmtpStatusCode.Ok)
-                this.AddToMailQueue(templateName, to, model, language);
+                this.AddToMailQueue(templateName, to, model, language, attachments);
         }
 
-        public void SendEmails(int timeoutMinutes = 3)
+        public async Task SendEmails(int timeoutMinutes = 3)
         {
             var context = new MailerContext();
             var start = DateTime.UtcNow;
@@ -55,16 +60,16 @@ namespace AzureMailer
                     if (email.LeaseExpire.GetValueOrDefault() > start || !context.Outboxes.Lease(email, leaseTime))
                         continue;
 
-                    SendEmailFromStore(context, email);
+                    await SendEmailFromStore(context, email);
                 }
             }
             while (token != null);
         }
 
-        static void SendEmailFromStore(MailerContext context, Email email)
+        static async Task SendEmailFromStore(MailerContext context, Email email)
         {
             email.DequeueCount++;
-            var result = SafeSendEmail(email);
+            var result = await SafeSendEmail(email);
             if (result == SmtpStatusCode.Ok)
                 context.Outboxes.Delete(email);
             else if (email.DequeueCount >= 3 || !ShouldRetry(result))
@@ -120,7 +125,7 @@ namespace AzureMailer
 
         }
 
-        static void SendEmail(Email email)
+        static async Task SendEmail(Email email)
         {
             using (var smtpClient = new SmtpClient())
             using (var message = new MailMessage
@@ -132,15 +137,32 @@ namespace AzureMailer
             })
             {
                 message.To.Add(email.To);
+
+                if (email.Attachments != null)
+                {
+                    foreach (var path in email.Attachments)
+                    {
+                        var url = new Uri(path);
+                        var response = await _client.GetAsync(url);
+                        response.EnsureSuccessStatusCode();
+                        if (response.Content == null)
+                            continue;
+                        var stream = await response.Content.ReadAsStreamAsync();
+                        var name = url.Segments.Last();
+                        var attachment = new Attachment(stream, name, response.Content.Headers.ContentType.MediaType);
+                        message.Attachments.Add(attachment);
+                    }
+                }
+
                 smtpClient.Send(message);
             }
         }
 
-        static SmtpStatusCode SafeSendEmail(Email email)
+        static async Task<SmtpStatusCode> SafeSendEmail(Email email)
         {
             try
             {
-                SendEmail(email);
+                await SendEmail(email);
                 return SmtpStatusCode.Ok;
             }
             catch (SmtpException ex)
@@ -153,6 +175,21 @@ namespace AzureMailer
                 logger.Error("Unknown error while sending email", ex);
                 return SmtpStatusCode.GeneralFailure;
             }
+        }
+
+        private static readonly HttpClient _client = createHttpClient();
+        static HttpClient createHttpClient()
+        {
+            var handler = new HttpClientHandler
+            {
+                UseCookies = false,
+                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
+            };
+            var client = new HttpClient(handler);
+            client.DefaultRequestHeaders.AcceptEncoding.Add(new StringWithQualityHeaderValue("gzip"));
+            client.DefaultRequestHeaders.AcceptEncoding.Add(new StringWithQualityHeaderValue("deflate"));
+
+            return client;
         }
     }
 }

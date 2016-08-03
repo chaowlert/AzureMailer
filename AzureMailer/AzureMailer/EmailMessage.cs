@@ -1,11 +1,14 @@
 ﻿using System;
+using System.Runtime.Caching;
 using AzureStorageExtensions;
 
 namespace AzureMailer
 {
-    public class Email : ExpandableTableEntity, ILeasable
+    public class EmailMessage : ExpandableTableEntity, ILeasable
     {
+        public string From { get; set; }
         public string To { get; set; }
+        public string Cc { get; set; }
         public string Subject { get; set; }
         public string Body { get; set; }
         
@@ -18,6 +21,11 @@ namespace AzureMailer
         {
             get { return this.Attachments?.Join("|"); }
             set { this.Attachments = value?.Split('|'); }
+        }
+
+        public static EmailMessage Create(string templateName, string to, object model, string language = null)
+        {
+            return MemoryCache.Default.RunTemplate(templateName, to, model, language);
         }
     }
 }

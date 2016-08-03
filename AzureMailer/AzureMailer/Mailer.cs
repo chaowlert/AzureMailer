@@ -4,7 +4,6 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Mail;
-using System.Runtime.Caching;
 using System.Text;
 using System.Threading.Tasks;
 using Common.Logging;
@@ -16,24 +15,18 @@ namespace AzureMailer
     {
         private static readonly ILog logger = LogManager.GetLogger(typeof (Mailer));
 
-        public void AddToMailQueue(string templateName, string to, object model, string language = null, params string[] attachments)
+        public void AddToMailQueue(EmailMessage message)
         {
-            var outbox = MemoryCache.Default.RunTemplate(templateName, to, model, language, attachments);
             var context = new MailerContext();
-            context.Outboxes.Insert(outbox);
+            context.Outboxes.Insert(message);
         }
 
-        public Task<SmtpStatusCode> SendEmail(string templateName, string to, object model, string language = null, params string[] attachments)
+        public async Task<SmtpStatusCode> SendEmail(EmailMessage message, bool fallbackToQueue = true)
         {
-            var outbox = MemoryCache.Default.RunTemplate(templateName, to, model, language, attachments);
-            return SafeSendEmail(outbox);
-        }
-
-        public async Task SendEmailWithFallback(string templateName, string to, object model, string language = null, params string[] attachments)
-        {
-            var result = await this.SendEmail(templateName, to, model, language, attachments);
-            if (result != SmtpStatusCode.Ok)
-                this.AddToMailQueue(templateName, to, model, language, attachments);
+            var result = await safeSendEmail(message, !fallbackToQueue);
+            if (fallbackToQueue && result != SmtpStatusCode.Ok)
+                this.AddToMailQueue(message);
+            return result;
         }
 
         public async Task SendEmails(int timeoutMinutes = 3)
@@ -60,16 +53,16 @@ namespace AzureMailer
                     if (email.LeaseExpire.GetValueOrDefault() > start || !context.Outboxes.Lease(email, leaseTime))
                         continue;
 
-                    await SendEmailFromStore(context, email);
+                    await sendEmailFromStore(context, email);
                 }
             }
             while (token != null);
         }
 
-        static async Task SendEmailFromStore(MailerContext context, Email email)
+        static async Task sendEmailFromStore(MailerContext context, EmailMessage email)
         {
             email.DequeueCount++;
-            var result = await SafeSendEmail(email);
+            var result = await safeSendEmail(email);
             if (result == SmtpStatusCode.Ok)
                 context.Outboxes.Delete(email);
             else if (email.DequeueCount >= 3 || !ShouldRetry(result))
@@ -105,27 +98,27 @@ namespace AzureMailer
                 case SmtpStatusCode.ExceededStorageAllocation:
                     return true;
 
-                //these are permanent failure
-                case SmtpStatusCode.MailboxUnavailable:
-                case SmtpStatusCode.MailboxNameNotAllowed:
-                case SmtpStatusCode.UserNotLocalTryAlternatePath:
-                case SmtpStatusCode.TransactionFailed:
+                ////these are permanent failure
+                //case SmtpStatusCode.MailboxUnavailable:
+                //case SmtpStatusCode.MailboxNameNotAllowed:
+                //case SmtpStatusCode.UserNotLocalTryAlternatePath:
+                //case SmtpStatusCode.TransactionFailed:
 
-                //these are serious failure
-                case SmtpStatusCode.CommandUnrecognized:
-                case SmtpStatusCode.SyntaxError:
-                case SmtpStatusCode.CommandNotImplemented:
-                case SmtpStatusCode.BadCommandSequence:
-                case SmtpStatusCode.MustIssueStartTlsFirst:
-                case SmtpStatusCode.CommandParameterNotImplemented:
-                case SmtpStatusCode.GeneralFailure:
+                ////these are serious failure
+                //case SmtpStatusCode.CommandUnrecognized:
+                //case SmtpStatusCode.SyntaxError:
+                //case SmtpStatusCode.CommandNotImplemented:
+                //case SmtpStatusCode.BadCommandSequence:
+                //case SmtpStatusCode.MustIssueStartTlsFirst:
+                //case SmtpStatusCode.CommandParameterNotImplemented:
+                //case SmtpStatusCode.GeneralFailure:
                 default:
                     return false;
             }
 
         }
 
-        static async Task SendEmail(Email email)
+        static async Task sendEmail(EmailMessage email)
         {
             using (var smtpClient = new SmtpClient())
             using (var message = new MailMessage
@@ -136,6 +129,10 @@ namespace AzureMailer
                 Body = email.Body,
             })
             {
+                if (!string.IsNullOrEmpty(email.From))
+                    message.From = new MailAddress(email.From);
+                if (!string.IsNullOrEmpty(email.Cc))
+                    message.CC.Add(email.Cc);
                 message.To.Add(email.To);
 
                 if (email.Attachments != null)
@@ -143,7 +140,7 @@ namespace AzureMailer
                     foreach (var path in email.Attachments)
                     {
                         var url = new Uri(path);
-                        var response = await _client.GetAsync(url);
+                        var response = await client.GetAsync(url);
                         response.EnsureSuccessStatusCode();
                         if (response.Content == null)
                             continue;
@@ -158,26 +155,30 @@ namespace AzureMailer
             }
         }
 
-        static async Task<SmtpStatusCode> SafeSendEmail(Email email)
+        static async Task<SmtpStatusCode> safeSendEmail(EmailMessage email, bool @throw = false)
         {
             try
             {
-                await SendEmail(email);
+                await sendEmail(email);
                 return SmtpStatusCode.Ok;
             }
             catch (SmtpException ex)
             {
+                if (@throw)
+                    throw;
                 logger.Error("Error while sending email", ex);
                 return ex.StatusCode;
             }
             catch (Exception ex)
             {
+                if (@throw)
+                    throw;
                 logger.Error("Unknown error while sending email", ex);
                 return SmtpStatusCode.GeneralFailure;
             }
         }
 
-        private static readonly HttpClient _client = createHttpClient();
+        private static readonly HttpClient client = createHttpClient();
         static HttpClient createHttpClient()
         {
             var handler = new HttpClientHandler
@@ -185,11 +186,11 @@ namespace AzureMailer
                 UseCookies = false,
                 AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
             };
-            var client = new HttpClient(handler);
-            client.DefaultRequestHeaders.AcceptEncoding.Add(new StringWithQualityHeaderValue("gzip"));
-            client.DefaultRequestHeaders.AcceptEncoding.Add(new StringWithQualityHeaderValue("deflate"));
+            var httpClient = new HttpClient(handler);
+            httpClient.DefaultRequestHeaders.AcceptEncoding.Add(new StringWithQualityHeaderValue("gzip"));
+            httpClient.DefaultRequestHeaders.AcceptEncoding.Add(new StringWithQualityHeaderValue("deflate"));
 
-            return client;
+            return httpClient;
         }
     }
 }

@@ -31,7 +31,6 @@ namespace System.Runtime.Caching
                 Subject = subject,
                 Body = body,
                 To = to
-                Attachments = attachments,
             };
         }
 

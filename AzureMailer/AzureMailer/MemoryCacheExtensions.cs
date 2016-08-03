@@ -7,10 +7,10 @@ namespace System.Runtime.Caching
 {
     public static class MemoryCacheExtensions
     {
-        public static Email RunTemplate(this MemoryCache cache, string name, string to, object model, string language = null)
+        public static Email RunTemplate(this MemoryCache cache, string name, string to, object model, string language = null, params string[] attachments)
         {
             var key = "RunTemplate_" + name;
-            var subject = cache.GetOrCreate(key, () =>
+            cache.GetOrCreate(key, () =>
             {
                 var context = new MailerContext();
                 Template template = null;
@@ -18,18 +18,12 @@ namespace System.Runtime.Caching
                     template = context.Templates[name + "." + language, string.Empty];
                 if (template == null)
                     template = context.Templates[name, string.Empty];
-                if (template == null)
-                {
-                    Engine.Razor.Compile(string.Empty, name);
-                    return string.Empty;
-                }
-                else
-                {
-                    Engine.Razor.Compile(template.body, name);
-                    return template.subject;
-                }
+                Engine.Razor.Compile(template.body, name);
+                Engine.Razor.Compile(template.subject, name + "|subject");
+                return string.Empty;
             });
             var body = Engine.Razor.Run(name, model: model);
+            var subject = Engine.Razor.Run(name + "|subject", model: model);
             return new Email
             {
                 PartitionKey = TimeId.NewSortableId(),
@@ -37,6 +31,7 @@ namespace System.Runtime.Caching
                 Subject = subject,
                 Body = body,
                 To = to,
+                Attachments = attachments,
             };
         }
 

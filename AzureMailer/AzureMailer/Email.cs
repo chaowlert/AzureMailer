@@ -11,5 +11,13 @@ namespace AzureMailer
         
         public int DequeueCount { get; set; }
         public DateTime? LeaseExpire { get; set; }
+
+        public string[] Attachments { get; set; }
+
+        public string AttachmentJoin
+        {
+            get { return this.Attachments?.Join("|"); }
+            set { this.Attachments = value?.Split('|'); }
+        }
     }
 }

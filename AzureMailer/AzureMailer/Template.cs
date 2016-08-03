@@ -3,7 +3,7 @@
 namespace AzureMailer
 {
     /// <summary>
-    /// Template ต่างๆ ที่ใช้ในระบบ
+    /// Email Template
     /// </summary>
     public class Template : ExpandableTableEntity
     {

@@ -1,7 +1,7 @@
 # AzureMailer
 This library use RazorEngine to compile email templates and store those templates in Azure. It also include service to queue emails and batch sending emails.
 
-####How to use
+#### How to use
 1. This library use [Azure Storage Extension](https://github.com/chaowlert/AzureStorageExtensions) to connect to blob.  You need to setup connection string.
 2. Add template in `Templates` table.  
 `PartitionKey` might include language such as `signup.th`. If `signup.th` is not found, it will fallback to `signup`.  
@@ -10,7 +10,7 @@ This library use RazorEngine to compile email templates and store those template
 `body` is email body template.  
 3. To send email, call `Mailer.SendEmailWithFallback(templateName, toEmail, model, language)`, this will send email. If email is failed to send, it will be added to queue. And you might have periodically service to run `Mailer.SendEmails()` to resend failed emails.
 
-####Example
+#### Example
 In `web.config`, add following to connectionStrings
 ```
 <connectionStrings>

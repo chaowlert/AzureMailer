@@ -29,34 +29,14 @@ namespace AzureMailer
             return result;
         }
 
-        public async Task SendEmails(int timeoutMinutes = 3)
+        public Task SendEmails(int timeoutMinutes = 3)
         {
             var context = new MailerContext();
-            var start = DateTime.UtcNow;
-            var leaseTime = TimeSpan.FromMinutes(timeoutMinutes);
-
             var query = context.Outboxes.Query();
-            TableContinuationToken token = null;
-            do
-            {
-                var segment = query.ExecuteSegmented(token);
-                token = segment.ContinuationToken;
-                if (segment.Results.Count <= 0)
-                    continue;
-                foreach (var email in segment.Results)
-                {
-                    if ((DateTime.UtcNow - start) > leaseTime)
-                    {
-                        token = null;
-                        break;
-                    }
-                    if (email.LeaseExpire.GetValueOrDefault() > start || !context.Outboxes.Lease(email, leaseTime))
-                        continue;
-
-                    await sendEmailFromStore(context, email);
-                }
-            }
-            while (token != null);
+            var leaseTime = TimeSpan.FromMinutes(timeoutMinutes);
+            var emails = context.Outboxes.BulkLease(query, leaseTime);
+            var task = emails.Select(email => sendEmailFromStore(context, email));
+            return Task.WhenAll(task);
         }
 
         static async Task sendEmailFromStore(MailerContext context, EmailMessage email)
@@ -137,6 +117,7 @@ namespace AzureMailer
 
                 if (email.Attachments != null)
                 {
+                    int i = 0;
                     foreach (var path in email.Attachments)
                     {
                         var url = new Uri(path);
@@ -145,13 +126,18 @@ namespace AzureMailer
                         if (response.Content == null)
                             continue;
                         var stream = await response.Content.ReadAsStreamAsync();
-                        var name = url.Segments.Last();
+                        var name = url.LocalPath.Split('/').Last();
+                        if (name == string.Empty)
+                        {
+                            i++;
+                            name = "file" + i;
+                        }
                         var attachment = new Attachment(stream, name, response.Content.Headers.ContentType.MediaType);
                         message.Attachments.Add(attachment);
                     }
                 }
 
-                smtpClient.Send(message);
+                await smtpClient.SendMailAsync(message);
             }
         }
 

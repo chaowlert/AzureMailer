@@ -18,16 +18,16 @@ namespace System.Runtime.Caching
                     template = context.Templates[name + "." + language, string.Empty];
                 if (template == null)
                     template = context.Templates[name, string.Empty];
-                Engine.Razor.AddTemplate(template.body, name);
-                Engine.Razor.AddTemplate(template.subject, name + "|subject");
+                Engine.Razor.AddTemplate(name, template.body);
+                Engine.Razor.AddTemplate(name + "|subject", template.subject);
                 return string.Empty;
             });
             var body = Engine.Razor.RunCompile(name, model: model);
             var subject = Engine.Razor.RunCompile(name + "|subject", model: model);
             return new EmailMessage
             {
-                PartitionKey = TimeId.NewSortableId(),
-                RowKey = string.Empty,
+                PartitionKey = string.Empty,
+                RowKey = TimeId.NewSortableId(),
                 Subject = subject,
                 Body = body,
                 To = to

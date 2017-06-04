@@ -33,8 +33,7 @@ namespace AzureMailer
 
         public ITemplateSource Resolve(ITemplateKey key)
         {
-            ITemplateSource result;
-            if (_dynamicTemplates.TryGetValue(key, out result))
+            if (_dynamicTemplates.TryGetValue(key, out ITemplateSource result))
             {
                 return result;
             }
